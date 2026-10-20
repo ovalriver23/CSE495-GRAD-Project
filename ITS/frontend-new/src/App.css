@@ -1,0 +1,69 @@
+/* General Settings */
+body {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f2f5;
+}
+
+.App {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    width: 100%;
+}
+
+/* GTÜ Header */
+.gtu-header {
+    width: 100%;
+    background-color: #ffffff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    margin-bottom: 0;
+    padding: 0;
+}
+
+.gtu-header .container {
+    padding: 10px 20px;
+    text-align: left;
+}
+
+.gtu-logo {
+    height: 50px;
+    max-width: 140px;
+    object-fit: contain;
+}
+
+/* GTU Strip Container */
+.gtu-strip-container {
+    width: 100%;
+    margin-top: 0;
+}
+
+.strip {
+    height: 3px;
+    width: 100%;
+    margin-bottom: 1px;
+}
+
+.strip-orange { 
+    background-color: #F37021; 
+}
+
+.strip-red { 
+    background-color: #E30613; 
+}
+
+.strip-blue { 
+    background-color: #004A99; 
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .gtu-logo {
+        height: 40px;
+    }
+    
+    .gtu-header .container {
+        padding: 8px 15px;
+    }
+}

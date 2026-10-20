@@ -1,0 +1,167 @@
+// Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------
+// Enums
+// ------------------------
+
+/// Stajın yaşam döngüsü durumları
+enum InternshipStatus {
+  IN_PROGRESS
+  AWAITING_EVALUATION
+  COMPLETED
+}
+
+/// Staj sırası (STAJ1 veya STAJ2)
+enum InternshipOrderType {
+  STAJ1
+  STAJ2
+}
+
+// ------------------------
+// Users & Roles
+// ------------------------
+
+model Role {
+  id    Int    @id @default(autoincrement())
+  /// General Admin, Commission Chair, Commission Member
+  name  String @unique
+  users User[]
+}
+
+model User {
+  id                      Int     @id @default(autoincrement())
+  name                    String
+  username                String  @unique
+  email                   String  @unique
+  password                String
+  requiresPasswordChange  Boolean @default(false)
+  roleId                  Int
+  role                    Role    @relation(fields: [roleId], references: [id])
+  /// Hoca/Kullanıcı'nın departmanı (opsiyonel)
+  departmentId            Int?
+  department              Department? @relation(fields: [departmentId], references: [id])
+  createdAt               DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  email     String
+  token     String   // The 6-digit code
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([email, token])
+}
+
+// ------------------------
+// Departments
+// ------------------------
+
+model Department {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  users    User[]
+  students Student[]
+}
+
+// ------------------------
+// Students & Terms
+// ------------------------
+
+model Student {
+  id           String         @id 
+  name         String
+  email        String       @unique
+  phone_number String
+  departmentId Int
+  department   Department   @relation(fields: [departmentId], references: [id])
+  internships  Internship[]
+}
+
+model Term {
+  id          Int          @id @default(autoincrement())
+  /// e.g., "2025 Summer"
+  name        String      @unique
+  startDate   DateTime    
+  endDate     DateTime
+  internships Internship[]
+}
+
+// ------------------------
+// Companies
+// ------------------------
+
+model Company {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  /// Opsiyonel
+  phone       String?
+  /// Opsiyonel
+  email       String?
+  internships Internship[]
+}
+
+// ------------------------
+// Internships
+// ------------------------
+
+/// İŞ KURALI: Backend tarafında, internshipOrder değeri 'STAJ2' olan bir kayıt eklenmeden önce,
+/// aynı öğrenciye ait 'STAJ1' kaydının varlığı ve notunun 'S' olduğu kontrol edilir.
+model Internship {
+  id        Int      @id @default(autoincrement())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  companyId Int
+  company   Company  @relation(fields: [companyId], references: [id])
+  termId    Int
+  term      Term     @relation(fields: [termId], references: [id])
+
+  /// Stajın başladıktan sonraki yaşam döngüsünü takip eder
+  status      InternshipStatus
+  
+  /// 'STAJ1' veya 'STAJ2'
+  internshipOrder InternshipOrderType
+  
+  /// Staj süresi (örn: 20 iş günü)
+  durationDays    Int
+
+  /// Erasmus stajı mı?
+  isErasmus Boolean @default(false)
+
+  /// Temas kurulacak kişi
+  companyContactName     String?
+  /// Temas kurulacak kişinin pozisyonu
+  companyContactPosition String?
+
+  // Tarih ve Not Bilgileri
+  startDate DateTime
+  endDate   DateTime
+  /// S/U (Stajın nihai notu)
+  grade     String?
+  /// Not için opsiyonel açıklama
+  gradeComment String?
+  createdAt DateTime @default(now())
+  
+  /// Staj raporu PDF'inin URL'si
+  reportUrl   String?
+  /// Staj fişi PDF'inin URL'si
+  documentUrl String?
+  /// Staj için rapor oluşturuldu mu?
+  isReported  Boolean @default(false)
+
+  /// Veri bütünlüğü için: Bir öğrencinin her staj türünden sadece bir tane olabilir.
+  @@unique([studentId, internshipOrder])
+}

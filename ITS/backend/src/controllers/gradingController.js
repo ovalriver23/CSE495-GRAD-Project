@@ -1,0 +1,161 @@
+import prisma from '../config/prisma.js';
+
+/**
+ * Grade an internship
+ * POST /api/grade-internship
+ * Body: { internshipId, studentId, internshipOrder, grade, gradeComment? }
+ */
+export async function gradeInternship(req, res) {
+  try {
+    const { internshipId, studentId, internshipOrder, grade, gradeComment } = req.body;
+
+    // Validate required fields
+    if (!studentId || !internshipOrder || !grade) {
+      return res.status(400).json({
+        error: 'Missing required fields: studentId, internshipOrder, and grade are required',
+      });
+    }
+
+    // Validate grade value
+    if (!['S', 'U'].includes(grade)) {
+      return res.status(400).json({ error: 'Grade must be either "S" or "U"' });
+    }
+
+    // Update the internship with grade and optional comment
+    const updatedInternship = await prisma.internship.update({
+      where: {
+        studentId_internshipOrder: {
+          studentId,
+          internshipOrder,
+        },
+      },
+      data: {
+        grade,
+        gradeComment: gradeComment || null,
+        status: 'COMPLETED', // Mark as completed when graded
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        company: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return res.json({
+      message: 'Internship graded successfully',
+      internship: updatedInternship,
+    });
+  } catch (error) {
+    console.error('Error grading internship:', error);
+    
+    // Handle specific Prisma errors
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Internship not found' });
+    }
+
+    return res.status(500).json({ error: 'Failed to grade internship' });
+  }
+}
+
+/**
+ * Bulk grade multiple internships
+ * POST /api/grade-internships-bulk
+ * Body: { grades: [{ studentId, internshipOrder, grade, gradeComment? }] }
+ */
+export async function bulkGradeInternships(req, res) {
+  try {
+    console.log('Bulk grade request received:', JSON.stringify(req.body, null, 2));
+    const { grades } = req.body;
+
+    if (!Array.isArray(grades) || grades.length === 0) {
+      console.log('Invalid grades array:', grades);
+      return res.status(400).json({ error: 'grades array is required and must not be empty' });
+    }
+
+    const results = [];
+    const errors = [];
+
+    // Process each grade
+    for (const gradeData of grades) {
+      const { studentId, internshipOrder, grade, gradeComment } = gradeData;
+      console.log(`Processing grade for student ${studentId}, internship ${internshipOrder}`);
+
+      // Validate required fields
+      if (!studentId || !internshipOrder || !grade) {
+        errors.push({
+          studentId,
+          internshipOrder,
+          error: 'Missing required fields',
+        });
+        continue;
+      }
+
+      // Validate grade value
+      if (!['S', 'U'].includes(grade)) {
+        errors.push({
+          studentId,
+          internshipOrder,
+          error: 'Grade must be either "S" or "U"',
+        });
+        continue;
+      }
+
+      try {
+        const updatedInternship = await prisma.internship.update({
+          where: {
+            studentId_internshipOrder: {
+              studentId,
+              internshipOrder,
+            },
+          },
+          data: {
+            grade,
+            gradeComment: gradeComment || null,
+            status: 'COMPLETED',
+          },
+        });
+
+        results.push({
+          studentId,
+          internshipOrder,
+          success: true,
+        });
+      } catch (error) {
+        console.error(`Error grading internship for student ${studentId}:`, error);
+        console.error('Error details:', { code: error.code, message: error.message });
+        errors.push({
+          studentId,
+          internshipOrder,
+          error: error.code === 'P2025' ? 'Internship not found' : 'Failed to grade',
+          details: error.message
+        });
+      }
+    }
+
+    console.log(`Bulk grading completed: ${results.length} success, ${errors.length} errors`);
+    if (errors.length > 0) {
+      console.log('Errors:', JSON.stringify(errors, null, 2));
+    }
+
+    return res.json({
+      message: 'Bulk grading completed',
+      successCount: results.length,
+      errorCount: errors.length,
+      results,
+      errors,
+    });
+  } catch (error) {
+    console.error('Error in bulk grading:', error);
+    return res.status(500).json({ error: 'Failed to process bulk grading' });
+  }
+}

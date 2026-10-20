@@ -1,0 +1,112 @@
+/* Table Container Card */
+.table-container-card {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+}
+
+.table-container-card h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 1.2em;
+    color: #333;
+}
+
+.table-container-card p {
+    margin-bottom: 15px;
+    font-size: 0.85em;
+    color: #666;
+}
+
+/* Export Button */
+.btn-export {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+    transition: background-color 0.3s;
+}
+
+.btn-export:hover {
+    background-color: #218838;
+}
+
+.btn-export i {
+    margin-right: 8px;
+}
+
+/* Styled Table */
+.styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    font-size: 0.95em;
+}
+
+.styled-table thead tr {
+    background-color: #f8f9fa;
+    color: #333;
+    text-align: left;
+}
+
+.styled-table th,
+.styled-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e9ecef;
+    font-size: 0.9em;
+}
+
+.styled-table tbody tr:last-of-type td {
+    border-bottom: 2px solid #007bff;
+}
+
+.styled-table tbody tr:hover {
+    background-color: #f1f1f1;
+}
+
+/* Info Bar */
+.info-bar {
+    background-color: #e6f7ff;
+    border: 1px solid #b3e0ff;
+    color: #0056b3;
+    padding: 10px 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    font-size: 0.85em;
+}
+
+.info-bar i {
+    margin-right: 10px;
+    font-size: 1em;
+}
+
+/* Error Message */
+.error-message {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    text-align: center;
+    border: 1px solid #f5c6cb;
+}
+
+/* Print Styles for PDF Export */
+@media print {
+    .btn-export {
+        display: none !important;
+    }
+    
+    .table-container-card {
+        box-shadow: none;
+        padding: 20px;
+    }
+}

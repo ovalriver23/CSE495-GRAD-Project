@@ -1,0 +1,244 @@
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import prisma from '../config/prisma.js';
+import nodemailer from 'nodemailer';
+
+// Configure Email Transporter (optional).
+// If EMAIL_USER / EMAIL_PASS are not set, emails are skipped and the password
+// reset code is printed to the server console instead (handy for local demos).
+const emailEnabled = Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+const transporter = emailEnabled
+    ? nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+        }
+    })
+    : null;
+
+export const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // Find user with role and department
+        const user = await prisma.user.findUnique({
+            where: { email: email },
+            include: {
+                role: true,
+                department: true
+            }
+        });
+
+        // Error if user is not found
+        if (!user) {
+            // General error message for security reasons
+            return res.status(401).json({ error: 'Geçersiz e-posta veya şifre.' });
+        }
+
+        // Compare passwords
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+
+        // Error if password is wrong
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: 'Geçersiz e-posta veya şifre.' });
+        }
+
+        // Create token
+        const token = jwt.sign(
+            { userId: user.id, email: user.email },        // Payload
+            process.env.JWT_SECRET,                        // Secret
+            { expiresIn: process.env.JWT_EXPIRE || '7d' }  // Expiry (configurable)
+        );
+
+        // Send token back to user
+        res.json({
+            message: 'Giriş başarılı!',
+            token: token,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                username: user.username,
+                role: user.role,
+                department: user.department,
+                requiresPasswordChange: user.requiresPasswordChange
+            }
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Giriş yapılırken bir sunucu hatası oluştu.' });
+    }
+};
+
+// 1. Step: Request Password Reset Code
+export const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            return res.status(404).json({ error: 'Bu e-posta adresi ile kayıtlı kullanıcı bulunamadı.' });
+        }
+
+        // Generate 6-digit code
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // Save to DB (expires in 15 mins)
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+        // Remove old tokens for this email
+        await prisma.passwordResetToken.deleteMany({
+            where: { email }
+        });
+
+        await prisma.passwordResetToken.create({
+            data: {
+                email,
+                token: code,
+                expiresAt
+            }
+        });
+
+        console.log(`[DEV ONLY] Password Reset Code for ${email}: ${code}`);
+
+        // Send the code by email if email is configured; otherwise the console
+        // log above is the fallback for local development/demos.
+        if (transporter) {
+            const mailOptions = {
+                from: process.env.EMAIL_USER,
+                to: email, // Send to the user who requested the reset
+                subject: 'ITS Şifre Sıfırlama Kodu',
+                text: `Şifre sıfırlama kodunuz: ${code}\n\nBu kod 15 dakika süreyle geçerlidir.`
+            };
+
+            transporter.sendMail(mailOptions, function(error, info) {
+                if (error) {
+                    console.log(error);
+                } else {
+                    console.log('Email sent: ' + info.response);
+                }
+            });
+        }
+
+        res.json({ message: 'Doğrulama kodu e-posta adresinize gönderildi.' });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'İşlem sırasında bir hata oluştu.' });
+    }
+};
+
+// 2. Step: Verify Code
+export const verifyResetCode = async (req, res) => {
+    try {
+        const { email, code } = req.body;
+
+        const record = await prisma.passwordResetToken.findFirst({
+            where: {
+                email,
+                token: code,
+                expiresAt: { gt: new Date() } // Must not be expired
+            }
+        });
+
+        if (!record) {
+            return res.status(400).json({ error: 'Geçersiz veya süresi dolmuş kod.' });
+        }
+
+        res.json({ message: 'Kod doğrulandı.', valid: true });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Doğrulama sırasında hata oluştu.' });
+    }
+};
+
+// 3. Step: Set New Password
+export const resetPasswordWithCode = async (req, res) => {
+    try {
+        const { email, code, newPassword } = req.body;
+
+        // Verify again securely
+        const record = await prisma.passwordResetToken.findFirst({
+            where: {
+                email,
+                token: code,
+                expiresAt: { gt: new Date() }
+            }
+        });
+
+        if (!record) {
+            return res.status(400).json({ error: 'Geçersiz veya süresi dolmuş işlem.' });
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update user
+        await prisma.user.update({
+            where: { email },
+            data: { password: hashedPassword }
+        });
+
+        // Delete used token
+        await prisma.passwordResetToken.deleteMany({
+            where: { email }
+        });
+
+        res.json({ message: 'Şifreniz başarıyla güncellendi.' });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Şifre güncellenirken hata oluştu.' });
+    }
+};
+
+// Deprecated direct reset (removed/secured)
+export const resetPassword = async (req, res) => {
+    res.status(405).json({ error: 'Use secure flow using codes.' });
+};
+
+export const changePassword = async (req, res) => {
+    try {
+        const { email, currentPassword, newPassword } = req.body;
+
+        if (!email || !currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Tüm alanlar zorunludur.' });
+        }
+
+        // Find user
+        const user = await prisma.user.findUnique({
+            where: { email }
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+        }
+
+        // Verify current password
+        const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: 'Mevcut şifre yanlış.' });
+        }
+
+        // Hash new password
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update password and set requiresPasswordChange to false
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password: hashedNewPassword,
+                requiresPasswordChange: false
+            }
+        });
+
+        res.json({ message: 'Şifre başarıyla değiştirildi.' });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Şifre değiştirilirken bir hata oluştu.' });
+    }
+};
