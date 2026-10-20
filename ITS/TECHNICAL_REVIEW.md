@@ -191,7 +191,36 @@ Karışık dil (TR+EN) kod/mesajlarda; endpoint isimlendirmesi karışık (`/kul
 
 ---
 
-## 7. Dosya Referans Haritası (incelenen)
+## 7. Fonksiyonel / Davranışsal Hata Listesi (kullanımı etkileyen 16 bulgu)
+
+> İkinci bir gözden geçirmede (kod üzerinden; bazıları gerçek veri değiştirilmeden doğrulanmış, canlı panelde uçtan uca test edilmedi) tespit edilen, **kullanımı ciddi etkileyen** 16 fonksiyonel hata. Yollar bu repoya göre güncellendi. "Örtüşme" sütunu raporun önceki bölümleriyle ilişkiyi gösterir. ✅ = tarafımca kodda doğrulandı.
+>
+> **İlk çözülmesi gerekenler (reviewer önceliği):** yetki açıkları **#1–#3**, hesap kaybı **#4**, yanlış belgeyi düzeltme/silme **#5–#6**, tutanak yeniden oluşturma **#10**.
+
+| # | Sorun | Konum | Örtüşme / Not |
+|---|-------|-------|----------------|
+| 1 | **Üye hesabıyla yönetici işlemleri:** Üye girişinden sonra `/dashboard`'a gidince admin paneli açılıyor; rol kontrolü yok → başkan ekle/kaldır yapılabiliyor. | `frontend-new/src/pages/Admin/AdminDashboard.js:14` | §2.4 (route guard + rol kontrolü yok) |
+| 2 | **Auth'suz kritik erişim:** Doğrudan isteklerle öğrenci okunabiliyor, komisyon hesapları eklenip silinebiliyor; `POST /api/kullanici` rolsüz çağrılırsa admin oluşturuyor. | `backend/src/routes/userRoutes.js:6` | §1.1 (auth eksikliği) |
+| 3 | **Bölümler arası yetki yok:** Bir bölümün üyesi, başka bölümdeki stajın notunu değiştirebiliyor; sadece rol kontrol ediliyor, öğrencinin aynı bölümde olduğu değil. | `backend/src/controllers/gradingController.js:27` | §1.2 (department scoping) |
+| 4 | **Başkan değişiminde hesap kaybı:** Mevcut başkan önce siliniyor; yeni hesap (örn. e-posta çakışması) oluşturulamazsa bölüm başkansız kalıyor ve eski hesap kayboluyor. Atomik değil. | `backend/src/controllers/departmentController.js:102` (sil-sonra-yarat `:78`) | §3 (tek-başkan kuralı DB'de değil) — **transaction'a alınmalı** |
+| 5 | **Yanlış kaydı silme/düzeltme UI'si yok:** Yanlış belge onaylanınca oluşan staj panelden silinemiyor/düzenlenemiyor; doğru belge tekrar yüklenince "zaten kayıtlı" hatası. (Backend'de `DELETE/PUT /internship/:id` var ama UI'de yok.) | `frontend-new/src/pages/Chair/StudentList.js:261` | Yeni — UI eksik (backend `internshipRoutes.js:40,43` mevcut) |
+| 6 | **Yüklenen PDF saklanmıyor:** Sadece parse edilen alanlar kaydediliyor; orijinal PDF tutulmuyor → imza/yanlış okuma sonradan kontrol edilemiyor. | `frontend-new/src/pages/Chair/UploadInternshipPDF.js:136` | Yeni — dosya saklama (storage) gerekiyor |
+| 7 | **Başarısız stajı tekrar kaydedememe:** `@@unique([studentId, internshipOrder])` ömür boyu tek STAJ1/STAJ2 tanıyor; başarısız (U) staj sonraki dönem tekrar kaydedilemiyor. | `backend/prisma/schema.prisma:166` (iş kuralı yorumu `:121`) | §3 (veri modeli) — benzersizlik dönem bazlı mı olmalı? |
+| 8 | ✅ **Reddedilen öğrenci toplu kayıtta yine kaydediliyor:** "Reddet" öğrenciyi listeden çıkarmıyor, sadece sonrakine geçiyor; "Tümünü Kaydet" reddedileni de kaydediyor. | `frontend-new/src/pages/Chair/UploadInternshipPDF.js:250` (save döngüsü `:195`) | Yeni — doğrulandı |
+| 9 | ✅ **"Dönem eklendi" diyor ama eklemiyor:** `handleAddTerm` içinde `// TODO: Backend'e gönderilecek` var; API çağrısı yok, yine de başarı toast'ı. Üstelik dönem oluşturma endpoint'i backend'de hiç yok. | `frontend-new/src/pages/Chair/UploadInternshipPDF.js:294` | Yeni — doğrulandı; backend'de term create yok |
+| 10 | **Tutanak yeniden oluşturulamıyor:** İlk üretimde ilgili stajlar `isReported=true` işaretlenip sonraki tutanaklardan çıkarılıyor; dosya kaybı/not düzeltmesi sonrası aynı kayıtlarla güncel tutanak alınamıyor. | `backend/src/controllers/internshipController.js:477` (`isReported: false` filtresi) | §2.7 (atomiklik) + yeniden üretim akışı yok |
+| 11 | **Aynı öğrencinin iki stajı erken değerlendirmede karışıyor:** Aynı dönem STAJ1+STAJ2 varsa bir satır seçilince iki satır seçili görünüyor; kaydederken "ilk bulunan" staj kullanılıp yanlış staj değerlendirilebiliyor. | `frontend-new/src/pages/Chair/EarlyEvaluation.js:177` | Yeni — satır kimliği internship.id yerine student bazlı |
+| 12 | ✅ **Toplu notlandırmada hatalar gizli:** 10 nottan 2'si hata verse bile sadece başarı mesajı (`successCount`) gösteriliyor; `errorCount`/`errors` yok sayılıyor. Erken değerlendirmede hatalara rağmen tutanak üretimi sürüyor. | `frontend-new/src/pages/Chair/GradeInternship.js:159` (toast `:168`) | Yeni — doğrulandı |
+| 13 | **Yeni staj mevcut öğrenci bilgisini bozuyor:** Eksik e-posta/telefonla upsert eski değerleri korumuyor; telefon boşalabiliyor, e-posta `studentId@example.com` oluyor, öğrenci yükleyenin bölümüne taşınabiliyor. | `backend/src/controllers/internshipController.js:129` | §2.8 (sessiz upsert) |
+| 14 | **Geçersiz veriyle kayıt:** Bitiş < başlangıç engellenmiyor; PDF'den okunamayan `NOT FOUND` değerleri (ad, no, kurum) yine kaydedilebiliyor → sahte veri listelere/tutanaklara giriyor. | `backend/src/controllers/internshipController.js:66` (validasyon) | §2.1 (validation yok) — tarih mantığı + `NOT FOUND` reddi |
+| 15 | ✅ **Filtre değişince notlar uyarısız kayboluyor:** Kaydetmeden dönem/not filtresi değişince `useEffect` state'i resetliyor; ayrıca arama ile gizlenenlerin notu "Tüm Notları Kaydet"te gönderilmiyor (`filteredStudents` üzerinde dönülüyor). | `frontend-new/src/pages/Chair/GradeInternship.js:73` (save `:128`, effect `:94`) | Yeni — doğrulandı |
+| 16 | **Şifremi Unuttum kullanıcıyı bekletiyor:** E-posta ayarı boşken "e-postanıza gönderildi" deniyor ama mail gitmiyor; kod yalnızca sunucu terminalinde → kullanıcı tek başına sıfırlayamıyor. | `backend/src/controllers/authController.js:108` (email koşulu) | Prod'da `EMAIL_*` zorunlu; aksi halde mesaj yanıltıcı |
+
+**Önceliklendirmeye etkisi:** #1–#3 zaten **Faz 0** (güvenlik) kapsamında. #4 (atomiklik/transaction) ve #13 (upsert) Faz 0–1 arası hızlı kazanımlar. #5, #6, #9, #10 kullanıcıyı doğrudan tıkayan işlevsel eksikler → **Faz 1.5** olarak ayrı ele alınmalı (canlı kullanım için kritik). #8, #11, #12, #14, #15 veri doğruluğu/UX → Faz 2 validation + UI çalışmasıyla birlikte.
+
+---
+
+## 8. Dosya Referans Haritası (incelenen)
 
 **Backend:** `index.js`, `src/server.js`, `src/config/prisma.js`, `src/middlewares/auth.js`, `src/controllers/{auth,user,department,student,grading,internship}Controller.js`, `src/routes/*`, `prisma/schema.prisma`, `prisma/seed.js`, `package.json`, `.env.example`, `.gitignore`.
 **Frontend:** `src/App.js`, `src/services/authService.js`, `src/pages/**` (token kullanımı + guard), `.env.production`, `package.json`, `.gitignore`.
